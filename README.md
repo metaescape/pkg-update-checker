@@ -47,10 +47,11 @@ use-package:
 
 ## Customization
 
-You can customize the interval at which `pkg-update-checker` checks for updates by setting the `pkg-update-checker-interval-hour` variable in your Emacs configuration:
+You can customize the interval at which `pkg-update-checker` checks for updates by setting the `pkg-update-checker-interval-hour` variable before (start-package-updater-timer):
 
 ```emacs-lisp
 (setq pkg-update-checker-interval-hour 12) ; Check for updates every 12 hours
+(start-package-updater-timer)
 ```
 
 ## Misc
