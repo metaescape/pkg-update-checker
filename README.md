@@ -42,7 +42,7 @@ use-package:
   :defer 30 ;; start first update check 10+30s later after emacs start, default is 10
   :load-path "site-lisp/pkg-update-checker" 
   :config
-  (start-package-updater-timer))
+  (start-pkg-update-checker-timer))
 ```
 
 ## Customization
@@ -51,7 +51,7 @@ You can customize the interval at which `pkg-update-checker` checks for updates 
 
 ```emacs-lisp
 (setq pkg-update-checker-interval-hour 12) ; Check for updates every 12 hours
-(start-package-updater-timer)
+(start-pkg-update-checker-timer)
 ```
 
 ## Misc
