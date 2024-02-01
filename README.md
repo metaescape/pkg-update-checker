@@ -39,7 +39,7 @@ use-package:
 
 ```emacs-lisp
 (use-package pkg-update-checker
-  :defer 30
+  :defer 30 ;; start first update check 10+30s later after emacs start, default is 10
   :load-path "site-lisp/pkg-update-checker" 
   :config
   (start-package-updater-timer))
