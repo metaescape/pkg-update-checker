@@ -23,22 +23,39 @@
 
 (define-derived-mode pkg-list-mode special-mode "*Upgradable Packages*"
   "Special mode for a custom package list buffer."
-  (use-local-map (copy-keymap special-mode-map)))
+  (use-local-map (copy-keymap special-mode-map))
+  (define-key pkg-list-mode-map (kbd "r") 'async-check-and-notify-upgradable-packages)
+  )
 
-(defun create-pkg-list-buffer (pkg-names)
-  "Create and display a buffer listing packages, allowing description on click.
-PKG-NAMES is a list of package names (symbols or strings)."
+(defun create-pkg-list-buffer (pkg-info)
+  "Create and display a buffer listing packages with their paths, allowing description on click.
+PKG-INFO is a list of lists, each containing a package name and its path."
   (with-current-buffer (get-buffer-create "*Upgradable Packages*")
-    (read-only-mode -1)
+    ;;(read-only-mode -1)
     (erase-buffer)
     (goto-char (point-min))
-    (dolist (pkg pkg-names)
-      (let ((pkg-str (if (symbolp pkg) (symbol-name pkg) pkg)))
-        (insert-button pkg-str
-                       'action `(lambda (x) (describe-package (intern ,pkg-str)))
+    (insert (format "%-40s %s\n" "Package Name" "Old-Path"))
+    (insert (make-string 80 ?-))
+    (insert "\n")
+    (dolist (pkg pkg-info)
+      (let* ((pkg-name (car pkg))
+             (pkg-version (cadr pkg))
+             (pkg-path (caddr pkg))
+             (pkg-name-version (format "%s%s" (symbol-name pkg-name) pkg-version))
+             (len (length pkg-name-version)))
+
+        (prin1 pkg-name-version)
+        (insert-button  pkg-name-version
+                        'action `(lambda (x) (package-upgrade (intern ,(symbol-name pkg-name))))
+                        'follow-link t
+                        'help-echo "Click to see package description")
+        (insert (make-string (- 40 len) ? ))
+        (insert-button (format "file:%s" (file-name-nondirectory pkg-path)) 
+                       'action `(lambda (x) (find-file ,pkg-path))
                        'follow-link t
-                       'help-echo "Click to see package description")
-        (insert "\n")))
+                       'help-echo "Click to go to old path")
+        (insert "\n")
+        ))
     (pkg-list-mode)
     (display-buffer (current-buffer))))
 
@@ -47,29 +64,37 @@ PKG-NAMES is a list of package names (symbols or strings)."
 
 (defun async-check-and-notify-upgradable-packages ()
   "Asynchronously check for upgradable packages and notify the user."
+  (interactive)
   (async-start
+   ;; call in child process
    `(lambda ()
-      ;; 明确加载 pkg-update-checker.el 文件
       (require 'package)
+      (require 'cl-lib)
+      (setq package-archives
+            '(("gnu"   . "https://elpa.gnu.org/packages/")
+              ("melpa" . "https://melpa.org/packages/")))
       (package-initialize)
       (package-refresh-contents) ;; updates soucelist
-      (let ((upgradable-packages
-             (cl-remove-if-not
-              (lambda (p)
-                (let ((new-version-available
-                       (ignore-errors (package-desc-vers
-                                       (cadr
-                                        (assq p package-archive-contents))))))
-                  (and new-version-available
-                       (version-list-< (package-desc-version (cadr (assq p package-alist))) new-version-available))))
-              (mapcar #'car package-alist))))
-        upgradable-packages))
+      (let ((upgradable-packages '()))
+        (dolist (pkg-desc package-alist)
+          (let* ((pkg (car pkg-desc))
+                 (current-pkg-desc (cadr pkg-desc))
+                 (archive-pkg-desc (cadr (assq pkg package-archive-contents))))
+            (when (and archive-pkg-desc
+                       (version-list-< (package-desc-version current-pkg-desc)
+                                       (package-desc-version archive-pkg-desc)))
+              (let ((archive-version (package-desc-version archive-pkg-desc))
+                    (current-path (package-desc-dir current-pkg-desc)))
+                (push (list pkg archive-version current-path) upgradable-packages)))))
+        (nreverse upgradable-packages)))
+
+   ;; call after await
    (lambda (upgradable-packages)
      (if upgradable-packages
          (progn 
            (create-pkg-list-buffer upgradable-packages)
            (let ((msg (format "The following packages have updates available:\n %s"
-                              (mapconcat 'symbol-name upgradable-packages "\n"))))
+                              (mapconcat (lambda (pkg)  (symbol-name (car pkg))) upgradable-packages "\n"))))
              (start-process "package-update-notification"
                             nil
                             "notify-send"
