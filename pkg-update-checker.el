@@ -30,11 +30,14 @@
 (defun create-pkg-list-buffer (pkg-info)
   "Create and display a buffer listing packages with their paths, allowing description on click.
 PKG-INFO is a list of lists, each containing a package name and its path."
+  (let ((buffer (get-buffer "*Upgradable Packages*")))
+    (when buffer
+      (kill-buffer buffer)))
   (with-current-buffer (get-buffer-create "*Upgradable Packages*")
     ;;(read-only-mode -1)
     (erase-buffer)
     (goto-char (point-min))
-    (insert (format "%-40s %s\n" "Package Name" "Old-Path"))
+    (insert (format "%-40s %s\n" "click to backup" "goto backup version"))
     (insert (make-string 80 ?-))
     (insert "\n")
     (dolist (pkg pkg-info)
@@ -42,69 +45,93 @@ PKG-INFO is a list of lists, each containing a package name and its path."
              (pkg-version (cadr pkg))
              (pkg-path (caddr pkg))
              (pkg-name-version (format "%s%s" (symbol-name pkg-name) pkg-version))
-             (len (length pkg-name-version)))
+             (len (length pkg-name-version))
+             (backup-dir (concat (file-name-directory  pkg-path) "backups/"))
+             (backup-file-name (file-name-nondirectory pkg-path)))
 
-        (prin1 pkg-name-version)
+        (unless (file-directory-p backup-dir)
+          (make-directory backup-dir t))
+        (message pkg-path)
+        (message backup-dir)
         (insert-button  pkg-name-version
-                        'action `(lambda (x) (package-upgrade (intern ,(symbol-name pkg-name))))
+                        'action `(lambda (x)
+                                   (when (file-directory-p ,pkg-path)
+                                     (copy-directory ,pkg-path ,backup-dir t)
+                                     (message (format "%s backuped" ,backup-file-name))
+                                     (package-upgrade (intern ,(symbol-name pkg-name)))))
                         'follow-link t
                         'help-echo "Click to see package description")
         (insert (make-string (- 40 len) ? ))
-        (insert-button (format "file:%s" (file-name-nondirectory pkg-path)) 
-                       'action `(lambda (x) (find-file ,pkg-path))
+        (insert-button backup-file-name
+                       'action `(lambda (x)
+                                  (progn
+                                    (find-file ,backup-dir)
+                                    (re-search-forward
+                                     (regexp-quote ,backup-file-name))))
                        'follow-link t
                        'help-echo "Click to go to old path")
-        (insert "\n")
-        ))
+        (insert "\n")))
     (pkg-list-mode)
     (display-buffer (current-buffer))))
 
-;; (create-pkg-list-buffer '(org-roam magit flycheck)) 
 ;; (create-pkg-list-buffer '("dash" "magit" "flycheck"))
+
+(defmacro check-upgradable-packages-macro ()
+  "A simple test function that returns a string."
+  `(progn
+     (defun check-upgradable-packages-function ()
+       "return a list of upgradable packages in the following format: 
+((package-name version path-of-old-version), (), ...)
+"
+       (require 'package)
+       (require 'cl-lib)
+       (setq package-archives
+             '(("gnu"    . "http://mirrors.tuna.tsinghua.edu.cn/elpa/gnu/")
+               ("melpa"  . "http://mirrors.tuna.tsinghua.edu.cn/elpa/melpa/")))
+       (package-initialize)
+       (package-refresh-contents) ;; updates soucelist
+       (let ((upgradable-packages '()))
+         (dolist (pkg-desc package-alist)
+           (let* ((pkg (car pkg-desc))
+                  (current-pkg-desc (cadr pkg-desc))
+                  (archive-pkg-desc (cadr (assq pkg package-archive-contents))))
+             (when (and archive-pkg-desc
+                        (version-list-< (package-desc-version current-pkg-desc)
+                                        (package-desc-version archive-pkg-desc)))
+               (let ((archive-version (package-desc-version archive-pkg-desc))
+                     (current-path (package-desc-dir current-pkg-desc)))
+                 (push (list pkg archive-version current-path) upgradable-packages)))))
+         (nreverse upgradable-packages)))))
+
+(defun parse-upgradable-packages-and-notify (upgradable-packages)
+  (if upgradable-packages
+      (progn 
+        (create-pkg-list-buffer upgradable-packages)
+        (let ((msg (format "The following packages have updates available:\n %s"
+                           (mapconcat (lambda (pkg)  (symbol-name (car pkg))) upgradable-packages "\n"))))
+          (start-process "package-update-notification"
+                         nil
+                         "notify-send"
+                         "Emacs Package Updates Available" msg)))
+    ;;else
+    (start-process "package-update-notification"
+                   nil
+                   "notify-send"
+                   "From Emacs Pkg-Update-checker"
+                   "🎉All packages are newest")))
 
 (defun async-check-and-notify-upgradable-packages ()
   "Asynchronously check for upgradable packages and notify the user."
   (interactive)
   (async-start
-   ;; call in child process
+   ;; call in child process, so this should be a macro
    `(lambda ()
-      (require 'package)
-      (require 'cl-lib)
-      (setq package-archives
-            '(("gnu"   . "https://elpa.gnu.org/packages/")
-              ("melpa" . "https://melpa.org/packages/")))
-      (package-initialize)
-      (package-refresh-contents) ;; updates soucelist
-      (let ((upgradable-packages '()))
-        (dolist (pkg-desc package-alist)
-          (let* ((pkg (car pkg-desc))
-                 (current-pkg-desc (cadr pkg-desc))
-                 (archive-pkg-desc (cadr (assq pkg package-archive-contents))))
-            (when (and archive-pkg-desc
-                       (version-list-< (package-desc-version current-pkg-desc)
-                                       (package-desc-version archive-pkg-desc)))
-              (let ((archive-version (package-desc-version archive-pkg-desc))
-                    (current-path (package-desc-dir current-pkg-desc)))
-                (push (list pkg archive-version current-path) upgradable-packages)))))
-        (nreverse upgradable-packages)))
-
-   ;; call after await
+      ,(macroexpand '(check-upgradable-packages-macro))
+      ;; 调用函数
+      (check-upgradable-packages-function))
+   ;; call after await, a normal function
    (lambda (upgradable-packages)
-     (if upgradable-packages
-         (progn 
-           (create-pkg-list-buffer upgradable-packages)
-           (let ((msg (format "The following packages have updates available:\n %s"
-                              (mapconcat (lambda (pkg)  (symbol-name (car pkg))) upgradable-packages "\n"))))
-             (start-process "package-update-notification"
-                            nil
-                            "notify-send"
-                            "Emacs Package Updates Available" msg)))
-       ;;else
-       (start-process "package-update-notification"
-                      nil
-                      "notify-send"
-                      "From Emacs Pkg-Update-checker"
-                      "🎉All packages are newest")))))
+     (parse-upgradable-packages-and-notify upgradable-packages))))
 
 ;;;###autoload
 (defun start-pkg-update-checker-timer ()

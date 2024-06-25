@@ -53,6 +53,3 @@ You can customize the interval at which `pkg-update-checker` checks for updates 
 (setq pkg-update-checker-interval-hour 12) ; Check for updates every 12 hours
 (start-pkg-update-checker-timer)
 ```
-
-## Misc
-80% of the codes and README is Written by GPT-4
