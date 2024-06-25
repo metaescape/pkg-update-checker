@@ -74,8 +74,6 @@ PKG-INFO is a list of lists, each containing a package name and its path."
     (pkg-list-mode)
     (display-buffer (current-buffer))))
 
-;; (create-pkg-list-buffer '("dash" "magit" "flycheck"))
-
 (defmacro check-upgradable-packages-macro ()
   "A simple test function that returns a string."
   `(progn
@@ -85,9 +83,7 @@ PKG-INFO is a list of lists, each containing a package name and its path."
 "
        (require 'package)
        (require 'cl-lib)
-       (setq package-archives
-             '(("gnu"    . "http://mirrors.tuna.tsinghua.edu.cn/elpa/gnu/")
-               ("melpa"  . "http://mirrors.tuna.tsinghua.edu.cn/elpa/melpa/")))
+       (setq package-archives (quote ,package-archives))
        (package-initialize)
        (package-refresh-contents) ;; updates soucelist
        (let ((upgradable-packages '()))
@@ -104,21 +100,20 @@ PKG-INFO is a list of lists, each containing a package name and its path."
          (nreverse upgradable-packages)))))
 
 (defun parse-upgradable-packages-and-notify (upgradable-packages)
-  (if upgradable-packages
-      (progn 
-        (create-pkg-list-buffer upgradable-packages)
-        (let ((msg (format "The following packages have updates available:\n %s"
-                           (mapconcat (lambda (pkg)  (symbol-name (car pkg))) upgradable-packages "\n"))))
-          (start-process "package-update-notification"
-                         nil
-                         "notify-send"
-                         "Emacs Package Updates Available" msg)))
-    ;;else
-    (start-process "package-update-notification"
-                   nil
-                   "notify-send"
-                   "From Emacs Pkg-Update-checker"
-                   "🎉All packages are newest")))
+  (when upgradable-packages
+    (create-pkg-list-buffer upgradable-packages))
+  (let ((msg
+         (if upgradable-packages
+             (format "The following packages have updates available:\n %s"
+                     (mapconcat (lambda (pkg) (symbol-name (car pkg)))
+                                upgradable-packages "\n"))
+           "🎉All packages are newest"
+           )))
+    (notifications-notify
+     :title "package-update-notification"
+     :body msg
+     :timeout (* org-show-notification-timeout 1000)
+     :urgency 'low)))
 
 (defun async-check-and-notify-upgradable-packages ()
   "Asynchronously check for upgradable packages and notify the user."
