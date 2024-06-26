@@ -53,23 +53,25 @@ PKG-INFO is a list of lists, each containing a package name and its path."
           (make-directory backup-dir t))
         (message pkg-path)
         (message backup-dir)
-        (insert-button  pkg-name-version
-                        'action `(lambda (x)
-                                   (when (file-directory-p ,pkg-path)
-                                     (copy-directory ,pkg-path ,backup-dir t)
-                                     (message (format "%s backuped" ,backup-file-name))
-                                     (package-upgrade (intern ,(symbol-name pkg-name)))))
-                        'follow-link t
-                        'help-echo "Click to see package description")
+        (insert-button
+         pkg-name-version
+         'action `(lambda (x)
+                    (when (file-directory-p ,pkg-path)
+                      (copy-directory ,pkg-path ,backup-dir t)
+                      (message (format "%s backuped" ,backup-file-name))
+                      (package-upgrade (intern ,(symbol-name pkg-name)))))
+         'follow-link t
+         'help-echo "Click to see package description")
         (insert (make-string (- 40 len) ? ))
-        (insert-button backup-file-name
-                       'action `(lambda (x)
-                                  (progn
-                                    (find-file ,backup-dir)
-                                    (re-search-forward
-                                     (regexp-quote ,backup-file-name))))
-                       'follow-link t
-                       'help-echo "Click to go to old path")
+        (insert-button
+         backup-file-name
+         'action `(lambda (x)
+                    (progn
+                      (find-file ,backup-dir)
+                      (re-search-forward
+                       (regexp-quote ,backup-file-name))))
+         'follow-link t
+         'help-echo "Click to go to old path")
         (insert "\n")))
     (pkg-list-mode)
     (display-buffer (current-buffer))))
@@ -100,20 +102,21 @@ PKG-INFO is a list of lists, each containing a package name and its path."
          (nreverse upgradable-packages)))))
 
 (defun parse-upgradable-packages-and-notify (upgradable-packages)
-  (when upgradable-packages
-    (create-pkg-list-buffer upgradable-packages))
-  (let ((msg
-         (if upgradable-packages
-             (format "The following packages have updates available:\n %s"
-                     (mapconcat (lambda (pkg) (symbol-name (car pkg)))
-                                upgradable-packages "\n"))
-           "🎉All packages are newest"
-           )))
-    (notifications-notify
-     :title "package-update-notification"
-     :body msg
-     :timeout (* org-show-notification-timeout 1000)
-     :urgency 'low)))
+    (when upgradable-packages
+      (create-pkg-list-buffer upgradable-packages))
+    (let ((msg
+           (if upgradable-packages
+               (format "The following packages have updates available:\n %s"
+                       (mapconcat (lambda (pkg) (symbol-name (car pkg)))
+                                  upgradable-packages "\n"))
+             "🎉All packages are newest"
+             )))
+      (require 'notifications)
+      (notifications-notify
+       :title "package-update-notification"
+       :body msg
+       :timeout (* org-show-notification-timeout 1000)
+       :urgency 'low)))
 
 (defun async-check-and-notify-upgradable-packages ()
   "Asynchronously check for upgradable packages and notify the user."
@@ -143,3 +146,4 @@ PKG-INFO is a list of lists, each containing a package name and its path."
 
 (provide 'pkg-update-checker)
 ;;; pkg-update-checker.el ends here
+(async-check-and-notify-upgradable-packages)
