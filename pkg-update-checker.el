@@ -23,9 +23,7 @@
 
 (define-derived-mode pkg-list-mode special-mode "*Upgradable Packages*"
   "Special mode for a custom package list buffer."
-  (use-local-map (copy-keymap special-mode-map))
-  (define-key pkg-list-mode-map (kbd "r") 'async-check-and-notify-upgradable-packages)
-  )
+  (use-local-map (copy-keymap special-mode-map)))
 
 (defun create-pkg-list-buffer (pkg-info)
   "Create and display a buffer listing packages with their paths, allowing description on click.
@@ -115,9 +113,11 @@ PKG-INFO is a list of lists, each containing a package name and its path."
       (notifications-notify
        :title "package-update-notification"
        :body msg
-       :timeout (* org-show-notification-timeout 1000)
+       :timeout (* 10 1000)
        :urgency 'low)))
 
+
+;;;###autoload
 (defun async-check-and-notify-upgradable-packages ()
   "Asynchronously check for upgradable packages and notify the user."
   (interactive)
@@ -137,7 +137,7 @@ PKG-INFO is a list of lists, each containing a package name and its path."
   (if server-mode
       (progn 
         (run-with-timer
-         10
+         30
          (* pkg-update-checker-interval-hour 3600)
          'async-check-and-notify-upgradable-packages)
         (message "Package updater timer started with interval %s hours."
@@ -146,4 +146,3 @@ PKG-INFO is a list of lists, each containing a package name and its path."
 
 (provide 'pkg-update-checker)
 ;;; pkg-update-checker.el ends here
-(async-check-and-notify-upgradable-packages)
